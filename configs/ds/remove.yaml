@@ -1,0 +1,4 @@
+datasets: !include ../datasets.yaml
+benchmarks: !include ../benchmarks.yaml
+results_path: outputs/results.csv
+output_dir: outputs

@@ -1,0 +1,7 @@
+- display_name: AlpacaEval
+  description: "AlpacaEval is a benchmark for evaluating the reasoning capabilities of language models."
+  path: tatsu-lab/alpaca_eval
+  subset: alpaca_eval
+  split: eval
+  query_fields:
+    - instruction

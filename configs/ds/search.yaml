@@ -1,0 +1,6 @@
+datasets: !include ../datasets.yaml
+benchmarks: !include ../benchmarks.yaml
+ngram_size: 8
+match_threshold: 0.5
+top_k: 10
+output_dir: outputs

@@ -1,0 +1,11 @@
+- display_name: Nemotron-Post-Training-Dataset-v2-Chat
+  description: ""
+  path: nvidia/Nemotron-Post-Training-Dataset-v2
+  subset: default
+  split: chat
+  messages_field: messages
+  query_filter:
+    - role
+    - user
+  query_field: content
+  index_name: null
