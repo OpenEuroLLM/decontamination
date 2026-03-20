@@ -56,10 +56,12 @@ def run_command_streaming(command: list[str]) -> tuple[int, str]:
 
     return proc.wait(), "".join(output_lines)
 
+
 @dataclass
 class TypedRow[T]:
     def from_row(row: pd.Series) -> T:
         raise NotImplementedError("Must be implemented by subclasses")
+
 
 class TypedDataFrame[T: TypedRow]:
     def __init__(self, df: pd.DataFrame, type: type[T]):
@@ -81,3 +83,7 @@ class TypedDataFrame[T: TypedRow]:
             pd.DataFrame(columns=list(type.__annotations__.keys())),
             type,
         )
+
+
+def bold(text: str) -> str:
+    return f"\033[1m{text}\033[0m"

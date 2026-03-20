@@ -1,8 +1,8 @@
-- display_name: Nemotron-Post-Training-Dataset-v2-Chat
-  description: ""
-  path: nvidia/Nemotron-Post-Training-Dataset-v2
+- display_name: Dolci-Instruct-SFT
+  description: "Dolci Instruct SFT"
+  path: allenai/Dolci-Instruct-SFT
   subset: default
-  split: chat
+  split: train
   messages_field: messages
   query_filter:
     - role

@@ -1,7 +1,120 @@
+###############################################################################
+# Mathematics & Deep Reasoning
+###############################################################################
+- display_name: MATH500
+  description: "A curated subset of 500 highly challenging competition math problems."
+  path: HuggingFaceH4/MATH-500
+  subset: default
+  split: test
+  data_files: null
+  query_fields:
+    - problem
+
+- display_name: AIME24
+  description: "Problems from the 2024 American Invitational Mathematics Examination."
+  path: HuggingFaceH4/aime_2024
+  subset: default
+  split: train
+  data_files: null
+  query_fields:
+    - problem
+
+- display_name: AIME25
+  description: "Problems from the 2025 American Invitational Mathematics Examination."
+  path: math-ai/aime25
+  subset: default
+  split: test
+  data_files: null
+  query_fields:
+    - problem
+
+- display_name: AMC23
+  description: "Problems from the 2023 American Mathematics Competitions (10/12)."
+  path: math-ai/amc23
+  subset: default
+  split: test
+  data_files: null
+  query_fields:
+    - question
+
+- display_name: JEEBench
+  description: "Rigorous physics, chemistry, and math problems from the Indian JEE exams."
+  path: daman1209arora/jeebench
+  subset: default
+  split: test
+  data_files: null
+  query_fields:
+    - question
+
+###############################################################################
+# Hard Science & General Knowledge
+###############################################################################
+- display_name: GPQADiamond
+  description: "A highly difficult dataset of PhD-level questions in biology, physics, and chemistry."
+  path: Idavidrein/gpqa
+  subset: gpqa_diamond
+  split: train
+  data_files: null
+  query_fields:
+    - Question
+
+###############################################################################
+# Coding & Development
+###############################################################################
+- display_name: LiveCodeBench
+  description: "Continuously updated LeetCode-style programming problems to prevent overfitting."
+  path: ali-elganzory/livecodebench-code_generation_lite
+  subset: release_v6
+  split: test
+  data_files: null
+  query_fields:
+    - question_content
+
+- display_name: HumanEval
+  description: "OpenAI's standard baseline for Python code generation and logic."
+  path: openai/openai_humaneval
+  subset: openai_humaneval
+  split: test
+  data_files: null
+  query_fields:
+    - prompt
+
+- display_name: MBPP
+  description: "Mostly Basic Python Problems, containing nearly 1,000 crowd-sourced entry-level programming tasks."
+  path: google-research-datasets/mbpp
+  subset: full
+  split: train+test+validation+prompt
+  data_files: null
+  query_fields:
+    - text
+
+###############################################################################
+# Instruction Following & Chat
+###############################################################################
+- display_name: IFEval
+  description: "Evaluates strict adherence to verifiable formatting constraints (e.g., word counts, specific formatting)."
+  path: google/IFEval
+  subset: default
+  split: train
+  data_files: null
+  query_fields:
+    - prompt
+
 - display_name: AlpacaEval
-  description: "AlpacaEval is a benchmark for evaluating the reasoning capabilities of language models."
+  description: "AlpacaEval is a benchmark for evaluating the quality of instruction-following models."
   path: tatsu-lab/alpaca_eval
   subset: alpaca_eval
   split: eval
+  data_files: null
   query_fields:
     - instruction
+
+- display_name: Arena-Hard-v2.0
+  description: "Complex, multi-turn user queries designed to test frontier-level conversational capabilities."
+  path: lmarena-ai/arena-hard-auto
+  subset: default
+  split: train
+  data_files:
+    - data/arena-hard-v2.0/question.jsonl
+  query_fields:
+    - prompt

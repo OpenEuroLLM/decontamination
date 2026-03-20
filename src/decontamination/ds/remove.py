@@ -1,14 +1,19 @@
 """
 Remove contaminated examples from training datasets based on search results.
 """
+
 import json
 import logging
 import os
+import shutil
 import sys
+import tempfile
+from collections import defaultdict
 from pathlib import Path
 
 import pandas as pd
 import yaml
+from jinja2 import Environment, FileSystemLoader
 from datasets import Dataset, DatasetDict, load_dataset, load_from_disk
 from huggingface_hub import HfApi, hf_hub_download
 
@@ -114,7 +119,6 @@ def make_contamination_stat(
         "split": split,
         "total": total,
         "removed": removed,
-        "fraction": removed / total if total else 0,
     }
 
 
@@ -236,7 +240,9 @@ def build_decontamination_info(
             for b in benchmarks
         ],
         "contamination_stats": list(decontamination_stats),
-        "splits": [split_key(s.get("subset"), s["split"]) for s in decontamination_stats],
+        "splits": [
+            split_key(s.get("subset"), s["split"]) for s in decontamination_stats
+        ],
     }
     # Add per-split search params from results
     for stat in info["contamination_stats"]:
@@ -246,6 +252,153 @@ def build_decontamination_info(
             stat["ngram_size"] = r.ngram_size
             stat["match_threshold"] = r.match_threshold
     return info
+
+
+def _benchmark_display_name(
+    benchmarks: list[BenchmarkConfig],
+    benchmark_path: str,
+    benchmark_subset: str | None,
+    benchmark_split: str,
+) -> str:
+    """Resolve benchmark display name from config."""
+    for b in benchmarks:
+        if (
+            b.path == benchmark_path
+            and b.subset == benchmark_subset
+            and b.split == benchmark_split
+        ):
+            return b.display_name
+    return f"{benchmark_path} ({benchmark_subset or 'default'}/{benchmark_split})"
+
+
+def _format_contamination_rate(fraction: float) -> str:
+    """Format contamination fraction as percentage string."""
+    pct = fraction * 100
+    return f"{pct:.4f}%" if pct < 1 else f"{pct:.2f}%"
+
+
+def build_readme_context(
+    source_path: str,
+    benchmarks: list[BenchmarkConfig],
+    decontamination_stats: list[dict],
+    results: list[Result],
+) -> dict:
+    """Build template context for the decontamination README section."""
+    matching_results = [
+        r
+        for r in results
+        if r.dataset_path == source_path and result_matches_benchmarks(r, benchmarks)
+    ]
+
+    benchmark_order = {
+        (b.path, b.subset, b.split): i for i, b in enumerate(benchmarks)
+    }
+
+    def sort_key(r: Result) -> tuple:
+        subset = r.dataset_subset or ""
+        split = r.dataset_split
+        bench_key = (r.benchmark_path, r.benchmark_subset, r.benchmark_split)
+        bench_idx = benchmark_order.get(bench_key, 999)
+        return (subset, split, bench_idx)
+
+    matching_results.sort(key=sort_key)
+
+    # Table 1: Settings rows
+    seen_settings: set[tuple[int, float]] = set()
+    settings_rows: list[dict] = []
+    for r in matching_results:
+        key = (r.ngram_size, r.match_threshold)
+        if key not in seen_settings:
+            seen_settings.add(key)
+            settings_rows.append({"param": "N-gram size", "value": r.ngram_size})
+            settings_rows.append(
+                {"param": "Match threshold", "value": r.match_threshold}
+            )
+
+    # Table 2: Split-benchmark rows with rowspan
+    subset_counts: dict[str, int] = defaultdict(int)
+    split_counts: dict[tuple[str, str], int] = defaultdict(int)
+    for r in matching_results:
+        sub = r.dataset_subset if r.dataset_subset is not None else "-"
+        spl = r.dataset_split
+        subset_counts[sub] += 1
+        split_counts[(sub, spl)] += 1
+
+    seen_subset: set[str] = set()
+    seen_split: set[tuple[str, str]] = set()
+    split_benchmark_rows: list[dict] = []
+    for r in matching_results:
+        sub = r.dataset_subset if r.dataset_subset is not None else "-"
+        spl = r.dataset_split
+        subset_rowspan = subset_counts[sub] if sub not in seen_subset else 0
+        split_rowspan = split_counts[(sub, spl)] if (sub, spl) not in seen_split else 0
+        if subset_rowspan > 0:
+            seen_subset.add(sub)
+        if split_rowspan > 0:
+            seen_split.add((sub, spl))
+
+        split_benchmark_rows.append(
+            {
+                "subset": sub,
+                "split": spl,
+                "subset_rowspan": subset_rowspan,
+                "split_rowspan": split_rowspan,
+                "benchmark_display_name": _benchmark_display_name(
+                    benchmarks, r.benchmark_path, r.benchmark_subset, r.benchmark_split
+                ),
+                "dataset_num_docs": r.dataset_num_docs,
+                "dataset_num_docs_fmt": f"{r.dataset_num_docs:,}",
+                "dataset_num_contaminated_docs": r.dataset_num_contaminated_docs,
+                "contamination_rate_pct": _format_contamination_rate(
+                    r.dataset_contamination_fraction
+                ),
+                "benchmark_num_docs": r.benchmark_num_docs,
+                "benchmark_num_contaminated_docs": r.benchmark_num_contaminated_docs,
+                "benchmark_contamination_rate_pct": _format_contamination_rate(
+                    r.benchmark_contamination_fraction
+                ),
+            }
+        )
+
+    # Dataset summary (whole-dataset aggregates from decontamination_stats)
+    total_original = sum(s["total"] for s in decontamination_stats)
+    total_removed = sum(s["removed"] for s in decontamination_stats)
+    total_remaining = total_original - total_removed
+    overall_rate = (
+        _format_contamination_rate(total_removed / total_original)
+        if total_original > 0
+        else "0%"
+    )
+    summary_row = {
+        "total_original": total_original,
+        "total_original_fmt": f"{total_original:,}",
+        "total_removed": total_removed,
+        "total_removed_fmt": f"{total_removed:,}",
+        "total_remaining": total_remaining,
+        "total_remaining_fmt": f"{total_remaining:,}",
+        "overall_rate": overall_rate,
+    }
+
+    # Benchmarks list for template
+    benchmarks_data = [
+        {
+            "display_name": b.display_name,
+            "path": b.path,
+            "subset": b.subset,
+            "split": b.split,
+            "data_files": b.data_files,
+        }
+        for b in benchmarks
+    ]
+
+    return {
+        "source_path": source_path,
+        "source_url": f"https://huggingface.co/datasets/{source_path}",
+        "benchmarks": benchmarks_data,
+        "settings_rows": settings_rows,
+        "split_benchmark_rows": split_benchmark_rows,
+        "summary_row": summary_row,
+    }
 
 
 def extract_yaml_and_rest(content: str) -> tuple[str, str]:
@@ -258,14 +411,31 @@ def extract_yaml_and_rest(content: str) -> tuple[str, str]:
     return "", content
 
 
+def _render_decontamination_section(
+    source_path: str,
+    benchmarks: list[BenchmarkConfig],
+    decontamination_stats: list[dict],
+    results: list[Result],
+) -> str:
+    """Render the Decontamination section using Jinja2 template."""
+    template_dir = Path(__file__).parent / "templates"
+    env = Environment(loader=FileSystemLoader(str(template_dir)))
+    template = env.get_template("decontamination_section.md.j2")
+    context = build_readme_context(
+        source_path, benchmarks, decontamination_stats, results
+    )
+    return template.render(**context)
+
+
 def build_readme(
     source_path: str,
     benchmarks: list[BenchmarkConfig],
     decontamination_stats: list[dict],
+    results: list[Result],
 ) -> str:
     """Build README with YAML metadata at top (per HF rules), then Decontamination section, then original content."""
-    decontam_section = format_decontamination_section(
-        source_path, benchmarks, decontamination_stats
+    decontam_section = _render_decontamination_section(
+        source_path, benchmarks, decontamination_stats, results
     )
     try:
         readme_path = hf_hub_download(
@@ -291,41 +461,18 @@ def build_readme(
     yaml_dict["decontamination"] = {
         "source_dataset": source_path,
         "benchmarks": [
-            {"path": b.path, "subset": b.subset, "split": b.split}
-            for b in benchmarks
+            {"path": b.path, "subset": b.subset, "split": b.split} for b in benchmarks
         ],
         "contamination_stats": decontamination_stats,
     }
 
     # Write: YAML at top (per HF rules), then Decontamination section, then rest
-    yaml_str = yaml.dump(yaml_dict, sort_keys=False, default_flow_style=False, allow_unicode=True)
-    return f"---\n{yaml_str.rstrip()}\n---\n\n{decontam_section}\n\n---\n\n{rest}".strip()
-
-
-def format_decontamination_section(
-    source_path: str,
-    benchmarks: list[BenchmarkConfig],
-    stats: list[dict],
-) -> str:
-    """Format the Decontamination section for the README."""
-    lines = [
-        "## Decontamination",
-        "",
-        f"This dataset is a decontaminated version of [{source_path}](https://huggingface.co/datasets/{source_path}).",
-        "",
-        "### Benchmarks used",
-        "",
-    ]
-    for b in benchmarks:
-        lines.append(f"- **{b.display_name}**: `{b.path}` (subset={b.subset}, split={b.split})")
-    lines.extend(["", "### Contamination statistics", ""])
-    for s in stats:
-        subset_split = f"{s['subset']}/{s['split']}" if s.get("subset") else s["split"]
-        lines.append(
-            f"- **{subset_split}**: {s['removed']} examples removed "
-            f"({s['fraction']:.6f} of {s['total']} total)"
-        )
-    return "\n".join(lines)
+    yaml_str = yaml.dump(
+        yaml_dict, sort_keys=False, default_flow_style=False, allow_unicode=True
+    )
+    return (
+        f"---\n{yaml_str.rstrip()}\n---\n\n{decontam_section}\n\n---\n\n{rest}".strip()
+    )
 
 
 def upload_metadata_to_hf(api: HfApi, repo_id: str, output_path: Path) -> None:
@@ -379,6 +526,65 @@ def ensure_stats_for_merged(
                 stats_keys.add((subset, split))
 
 
+def _unique_replace_backup_path(output_path: Path) -> Path:
+    """Return a non-existent sibling path for moving output_path aside during replace."""
+    parent = output_path.parent
+    base = output_path.name + ".replace-backup"
+    pid = os.getpid()
+    candidate = parent / f"{base}.{pid}"
+    if not candidate.exists():
+        return candidate
+    counter = 0
+    while True:
+        candidate = parent / f"{base}.{pid}.{counter}"
+        counter += 1
+        if not candidate.exists():
+            return candidate
+
+
+def save_datasetdict_replacing(merged: DatasetDict, output_path: Path) -> None:
+    """
+    Save merged to output_path, replacing any existing directory.
+
+    Writes to a sibling temp directory first so save_to_disk never targets the
+    same path as load_from_disk (HF datasets forbid that self-overwrite).
+    """
+    parent = output_path.parent
+    parent.mkdir(parents=True, exist_ok=True)
+    tmp_path: str | None = tempfile.mkdtemp(
+        dir=parent, prefix=f".{output_path.name}.tmp."
+    )
+    try:
+        merged.save_to_disk(tmp_path)
+        if not output_path.exists():
+            os.rename(tmp_path, output_path)
+            tmp_path = None
+            return
+
+        backup = _unique_replace_backup_path(output_path)
+        os.rename(output_path, backup)
+        try:
+            assert tmp_path is not None
+            os.rename(tmp_path, output_path)
+        except Exception:
+            try:
+                if backup.exists():
+                    os.rename(backup, output_path)
+            except OSError as e2:
+                log.warning(
+                    "Failed to restore previous dataset at %s from backup: %s",
+                    output_path,
+                    e2,
+                )
+            raise
+        else:
+            shutil.rmtree(backup)
+            tmp_path = None
+    finally:
+        if tmp_path is not None and os.path.exists(tmp_path):
+            shutil.rmtree(tmp_path, ignore_errors=True)
+
+
 def remove(
     datasets: list[DatasetConfig],
     benchmarks: list[BenchmarkConfig],
@@ -401,7 +607,10 @@ def remove(
         huggingface_id: Optional HF namespace for upload (e.g. 'myorg').
     """
     if not results_path.exists():
-        log.error("Results file not found: %s. Run 'ds index' and 'ds search' first.", results_path)
+        log.error(
+            "Results file not found: %s. Run 'ds index' and 'ds search' first.",
+            results_path,
+        )
         sys.exit(1)
 
     df = pd.read_csv(results_path)
@@ -502,9 +711,11 @@ def remove(
 
         # Save and upload all decontaminated splits (existing + newly processed)
         log.info("Saving decontaminated dataset to %s", output_path)
-        merged.save_to_disk(str(output_path))
+        save_datasetdict_replacing(merged, output_path)
 
-        readme_content = build_readme(path, benchmarks, decontamination_stats)
+        readme_content = build_readme(
+            path, benchmarks, decontamination_stats, results
+        )
         readme_path = output_path / "README.md"
         with open(readme_path, "w") as f:
             f.write(readme_content)

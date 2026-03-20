@@ -1,0 +1,78 @@
+## Decontamination
+
+This dataset is a decontaminated version of [{{ source_path }}]({{ source_url }}).
+
+### Benchmarks used
+
+{% for b in benchmarks %}
+- **{{ b.display_name }}**: `{{ b.path }}` (subset={{ b.subset }}, split={{ b.split }}){% if b.data_files %} (data_files={{ b.data_files }}){% endif %}
+
+{% endfor %}
+
+### Decontamination settings
+
+{% if settings_rows %}
+<table>
+<thead>
+<tr><th>Parameter</th><th>Value</th></tr>
+</thead>
+<tbody>
+{% for row in settings_rows %}
+<tr><td>{{ row.param }}</td><td>{{ row.value }}</td></tr>
+{% endfor %}
+</tbody>
+</table>
+{% else %}
+No settings available.
+{% endif %}
+
+### Split and benchmark details
+
+{% if split_benchmark_rows %}
+<table>
+<thead>
+<tr>
+<th>Subset</th>
+<th>Split</th>
+<th>Docs in split (dataset)</th>
+<th>Benchmark</th>
+<th>Contaminated (dataset)</th>
+<th>Contamination rate (dataset)</th>
+<th>Docs (benchmark)</th>
+<th>Contaminated (benchmark)</th>
+<th>Contamination rate (benchmark)</th>
+</tr>
+</thead>
+<tbody>
+{% for row in split_benchmark_rows %}
+<tr>
+{% if row.subset_rowspan > 0 %}<td rowspan="{{ row.subset_rowspan }}">{{ row.subset }}</td>{% endif %}
+{% if row.split_rowspan > 0 %}<td rowspan="{{ row.split_rowspan }}">{{ row.split }}</td>{% endif %}
+{% if row.split_rowspan > 0 %}<td rowspan="{{ row.split_rowspan }}">{{ row.dataset_num_docs_fmt }}</td>{% endif %}
+<td>{{ row.benchmark_display_name }}</td>
+<td>{{ row.dataset_num_contaminated_docs }}</td>
+<td>{{ row.contamination_rate_pct }}</td>
+<td>{{ row.benchmark_num_docs }}</td>
+<td>{{ row.benchmark_num_contaminated_docs }}</td>
+<td>{{ row.benchmark_contamination_rate_pct }}</td>
+</tr>
+{% endfor %}
+</tbody>
+</table>
+{% else %}
+No split-benchmark details available.
+{% endif %}
+
+### Dataset summary
+
+<table>
+<thead>
+<tr><th>Metric</th><th>Value</th></tr>
+</thead>
+<tbody>
+<tr><td>Total documents in dataset</td><td>{{ summary_row.total_original_fmt }}</td></tr>
+<tr><td>Contaminated documents (removed)</td><td>{{ summary_row.total_removed_fmt }}</td></tr>
+<tr><td>Documents after decontamination</td><td>{{ summary_row.total_remaining_fmt }}</td></tr>
+<tr><td>Contamination rate (dataset)</td><td>{{ summary_row.overall_rate }}</td></tr>
+</tbody>
+</table>

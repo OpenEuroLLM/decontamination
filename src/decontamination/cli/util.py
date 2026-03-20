@@ -8,7 +8,7 @@ import types
 import typing
 from dataclasses import fields, is_dataclass
 from pathlib import Path
-
+import argcomplete
 import yaml
 from typing_extensions import get_type_hints
 
@@ -98,10 +98,11 @@ def _cast_value(target_type, value):
 
 
 class CLI:
-    def __init__(self, description="CLI Application"):
+    def __init__(self, description="CLI Application", install_completion: bool = True):
         self.description = description
         self.commands = {}
         self.command_configs = {}
+        self.install_completion = install_completion
 
     def command(self, _func=None, *, default_config: str | None = None):
         def decorator(func):
@@ -115,7 +116,15 @@ class CLI:
 
     def __call__(self, args_list=None):
         parser = argparse.ArgumentParser(description=self.description)
-        subparsers = parser.add_subparsers(dest="__subcommand__", required=True)
+
+        if self.install_completion:
+            parser.add_argument(
+                "--install-completion",
+                choices=["bash", "zsh", "fish"],
+                help="Print the autocompletion setup script for the specified shell and exit",
+            )
+
+        subparsers = parser.add_subparsers(dest="__subcommand__", required=False)
 
         command_meta = {}
 
@@ -160,9 +169,7 @@ class CLI:
                     else:
                         group.add_argument(
                             f"--{cli_flag}",
-                            type=base_type
-                            if origin is None
-                            else str,  # Fallback generic types to str for argparse
+                            type=base_type if origin is None else str,
                             default=argparse.SUPPRESS,
                             help=help_text,
                             dest=full_name,
@@ -185,9 +192,7 @@ class CLI:
                     cli_flag = param_name.replace("_", "-")
                     sub_parser.add_argument(
                         f"--{cli_flag}",
-                        type=base_p_type
-                        if origin is None
-                        else str,  # Protect argparse from Generics
+                        type=base_p_type if origin is None else str,
                         default=argparse.SUPPRESS,
                         help=p_help,
                         dest=param_name,
@@ -195,8 +200,36 @@ class CLI:
 
             command_meta[name] = {"func": func, "sig": sig, "type_hints": type_hints}
 
+        if self.install_completion:
+            argcomplete.autocomplete(parser)
+
         parsed_args = vars(parser.parse_args(args_list))
+
+        shell_target = parsed_args.get("install_completion")
+        if shell_target:
+            executable_name = Path(sys.argv[0]).name
+            if shell_target == "bash":
+                cmd = f'eval "$(register-python-argcomplete {executable_name})"'
+                profile = "~/.bashrc"
+            elif shell_target == "zsh":
+                cmd = f'eval "$(register-python-argcomplete {executable_name})"'
+                profile = "~/.zshrc"
+            elif shell_target == "fish":
+                cmd = f"register-python-argcomplete --shell fish {executable_name} | source"
+                profile = "~/.config/fish/config.fish"
+
+            print(
+                f"\033[1mTo enable autocompletion for '{executable_name}', run the following command:\033[0m\n"
+            )
+            print(f"    {cmd}\n")
+            print("\033[1mTo make this permanent, append it to your profile:\033[0m\n")
+            print(f"    echo '{cmd}' >> {profile}")
+            sys.exit(0)
+
         subcommand_name = parsed_args.pop("__subcommand__")
+        if not subcommand_name:
+            parser.print_help()
+            sys.exit(2)
 
         meta = command_meta[subcommand_name]
         target_func = meta["func"]
@@ -261,7 +294,6 @@ class CLI:
                 if is_dataclass(f_base):
                     init_data[f.name] = _dict_to_dataclass(f_base, val)
                 else:
-                    # KEY FIX: Cast values inside dataclasses (e.g. converting string to Path)
                     init_data[f.name] = _cast_value(f_type, val)
 
             return target_class(**init_data)
@@ -289,7 +321,6 @@ class CLI:
                         init_data[f.name] = val
                 return target(**init_data)
 
-            # KEY FIX: Cast top-level primitives from YAML into their required types
             raw_val = get_val(prefix, config_data)
             return _cast_value(target_type, raw_val)
 

@@ -49,6 +49,7 @@ class BenchmarkConfig:
         path: The path to the benchmark dataset.
         subset: The subset of the benchmark dataset (optional).
         split: The split of the benchmark dataset (e.g., "train", "test").
+        data_files: The data files in the benchmark dataset to use for querying.
         query_fields: The fields in the benchmark dataset to use for querying.
     """
 
@@ -57,6 +58,7 @@ class BenchmarkConfig:
     path: str
     subset: str | None
     split: str
+    data_files: list[str] | None
     query_fields: list[str]
 
 
@@ -116,9 +118,24 @@ class Result(TypedRow["Result"]):
     contaminated_ids: dict[int, set[int]]
 
     def from_row(row: pd.Series) -> "Result":
-        dataset_query_filter = eval(row.pop("dataset_query_filter"))
-        benchmark_query_fields = eval(row.pop("benchmark_query_fields"))
-        contaminated_ids = eval(row.pop("contaminated_ids"))
+        dataset_query_filter = row.pop("dataset_query_filter")
+        dataset_query_filter = (
+            eval(dataset_query_filter)
+            if isinstance(dataset_query_filter, str)
+            else dataset_query_filter
+        )
+        benchmark_query_fields = row.pop("benchmark_query_fields")
+        benchmark_query_fields = (
+            eval(benchmark_query_fields)
+            if isinstance(benchmark_query_fields, str)
+            else benchmark_query_fields
+        )
+        contaminated_ids = row.pop("contaminated_ids")
+        contaminated_ids = (
+            eval(contaminated_ids)
+            if isinstance(contaminated_ids, str)
+            else contaminated_ids
+        )
         return Result(
             dataset_query_filter=dataset_query_filter,
             benchmark_query_fields=benchmark_query_fields,

@@ -3,23 +3,30 @@ name = "decontamination"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
-authors = [
-    { name = "Ali Elganzory", email = "alielganzory@hotmail.com" }
-]
+authors = [{ name = "Ali Elganzory", email = "alielganzory@hotmail.com" }]
 requires-python = ">=3.14"
 dependencies = [
-    "datasets>=4.7.0",
+    "datasets>=4.8.2",
+    "jinja2>=3.1.6",
     "elasticsearch>=9.3.0",
     "huggingface-hub>=1.7.1",
     "pandas>=3.0.1",
     "pip>=26.0.1",
-    "spacy>=3.8.11",
+    "spacy==3.8.11",
     "tqdm>=4.0.0",
+    "argcomplete>=3.6.3",
+    "en-core-web-lg==3.8.0",
 ]
+
+[tool.uv.sources]
+en-core-web-lg = { url = "https://github.com/explosion/spacy-models/releases/download/en_core_web_lg-3.8.0/en_core_web_lg-3.8.0-py3-none-any.whl" }
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[dependency-groups]
+dev = ["jupyter>=1.1.1"]
 
 [project.scripts]
 es = "decontamination.cli.es:main"

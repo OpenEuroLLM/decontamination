@@ -8,7 +8,7 @@ import spacy
 from datasets import Dataset, load_dataset
 from tqdm import tqdm
 
-from decontamination.util import TypedDataFrame
+from decontamination.util import bold, TypedDataFrame
 from elasticsearch import Elasticsearch
 
 from .config import BenchmarkConfig, DatasetConfig, Result
@@ -134,10 +134,16 @@ def read_dataset(
     name: str,
     subset: str | None,
     split: str,
+    data_files: list[str] | None = None,
     query_fields: list[str] = ["question"],
 ) -> Dataset:
     log.info("Loading dataset: %s, subset: %s, split: %s", name, subset, split)
-    ds = load_dataset(name, subset, split=split)
+    ds = load_dataset(
+        name,
+        subset,
+        split=split,
+        data_files=data_files,
+    )
     log.info("Loaded dataset: %s", ds)
     log.info("\tColumns: %s", ds.column_names)
     log.info("\tNumber of examples: %d", len(ds))
@@ -177,7 +183,7 @@ def search(
 
     for dataset in datasets:
         log.info(
-            "Processing dataset: %s (subset: %s, split: %s)...",
+            bold("Processing dataset: %s (subset: %s, split: %s)..."),
             dataset.path,
             dataset.subset,
             dataset.split,
@@ -186,13 +192,14 @@ def search(
             dataset.index_name = build_default_index_name(
                 dataset.path, dataset.subset, dataset.split
             )
-        log.info("\tUsing index name: %s", dataset.index_name)
+        log.info("- Using index name: %s", dataset.index_name)
         dataset_num_docs = es.count(index=dataset.index_name)["count"]
-        log.info("\tNumber of docs: %d\n", dataset_num_docs)
+        log.info("- Number of docs: %d", dataset_num_docs)
+        log.info("-" * 40)
 
         for benchmark in benchmarks:
             log.info(
-                "\tProcessing benchmark: %s (subset: %s, split: %s)...",
+                f"Processing benchmark: {bold('%s')} (subset: %s, split: %s)...",
                 benchmark.path,
                 benchmark.subset,
                 benchmark.split,
@@ -221,22 +228,24 @@ def search(
 
             if any(result.is_same_setup(other) for other in df_results):
                 log.info(
-                    "\tResults already exist for this dataset and benchmark; skipping..."
+                    "Results already exist for this dataset and benchmark; skipping..."
                 )
+                log.info("-" * 40)
                 continue
 
-            benchamrk_dataset = read_dataset(
-                benchmark.path,
-                benchmark.subset,
-                benchmark.split,
+            benchmark_dataset = read_dataset(
+                name=benchmark.path,
+                subset=benchmark.subset,
+                split=benchmark.split,
+                data_files=benchmark.data_files,
                 query_fields=benchmark.query_fields,
             )
-            result.benchmark_num_docs = len(benchamrk_dataset)
+            result.benchmark_num_docs = len(benchmark_dataset)
 
             match_scores, output_data, train_id_scores = ngram_match(
                 es,
                 dataset.index_name,
-                benchamrk_dataset,
+                benchmark_dataset,
                 benchmark.query_fields,
                 ngram_size,
                 top_k,
@@ -255,10 +264,24 @@ def search(
             result.benchmark_contamination_fraction = (
                 result.benchmark_num_contaminated_docs / result.benchmark_num_docs
             )
-            log.info(
-                f"\tBenchmark match score: {result.benchmark_contamination_fraction:.4f}"
-                f" ({result.benchmark_num_contaminated_docs} contaminated examples)"
-            )
+
+            # Print resutlts in a table format with two columns: Parameter and Value
+            log.info("Results:")
+            log.info("-" * 57)
+            for param, value in {
+                "# docs (dataset)": result.dataset_num_docs,
+                "# contaminated docs (dataset)": result.dataset_num_contaminated_docs,
+                "contamination rate (dataset)": result.dataset_contamination_fraction,
+                "# docs (benchmark)": result.benchmark_num_docs,
+                "# contaminated docs (benchmark)": result.benchmark_num_contaminated_docs,
+                "contamination rate (benchmark)": result.benchmark_contamination_fraction,
+            }:
+                log.info(f"| {str(param):<34} | {str(value):<16} |")
+            log.info("-" * 57)
+            log.info("-" * 40)
 
             df_results.add(result)
             df_results.df.to_csv(output_dir / "results.csv", index=False)
+
+        if dataset != datasets[-1]:
+            log.info("-" * 40)
