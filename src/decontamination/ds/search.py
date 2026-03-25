@@ -2,7 +2,6 @@ import logging
 import os
 from collections import defaultdict
 from pathlib import Path
-
 import pandas as pd
 import spacy
 from datasets import Dataset, load_dataset
@@ -195,7 +194,7 @@ def search(
         log.info("- Using index name: %s", dataset.index_name)
         dataset_num_docs = es.count(index=dataset.index_name)["count"]
         log.info("- Number of docs: %d", dataset_num_docs)
-        log.info("-" * 40)
+        log.info("-" * 60)
 
         for benchmark in benchmarks:
             log.info(
@@ -230,7 +229,7 @@ def search(
                 log.info(
                     "Results already exist for this dataset and benchmark; skipping..."
                 )
-                log.info("-" * 40)
+                log.info("-" * 60)
                 continue
 
             benchmark_dataset = read_dataset(
@@ -275,13 +274,13 @@ def search(
                 "# docs (benchmark)": result.benchmark_num_docs,
                 "# contaminated docs (benchmark)": result.benchmark_num_contaminated_docs,
                 "contamination rate (benchmark)": result.benchmark_contamination_fraction,
-            }:
+            }.items():
                 log.info(f"| {str(param):<34} | {str(value):<16} |")
             log.info("-" * 57)
-            log.info("-" * 40)
+            log.info("-" * 60)
 
             df_results.add(result)
             df_results.df.to_csv(output_dir / "results.csv", index=False)
 
         if dataset != datasets[-1]:
-            log.info("-" * 40)
+            log.info("-" * 80)

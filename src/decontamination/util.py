@@ -1,4 +1,6 @@
+import logging
 import os
+import json
 import subprocess
 from dataclasses import dataclass
 from enum import Enum
@@ -7,6 +9,9 @@ from platform import machine
 from typing import Generator
 
 import pandas as pd
+from datasets import Dataset, load_dataset
+
+log = logging.getLogger(__name__)
 
 NUM_PROCESSES = min(os.cpu_count() or 1, 32)
 
@@ -87,3 +92,30 @@ class TypedDataFrame[T: TypedRow]:
 
 def bold(text: str) -> str:
     return f"\033[1m{text}\033[0m"
+
+
+def read_dataset(
+    name: str,
+    subset: str | None,
+    split: str,
+    data_files: list[str] | None = None,
+    messages_field: str = "messages",
+) -> Dataset:
+    log.info("Loading dataset: %s, subset: %s, split: %s", name, subset, split)
+    ds = load_dataset(
+        name,
+        subset,
+        split=split,
+        data_files=data_files,
+    )
+    log.info("Loaded dataset: %s", ds)
+    log.info("\tColumns: %s", ds.column_names)
+    log.info("\tNumber of examples: %d", len(ds))
+
+    if isinstance(ds[messages_field][0], str):
+        ds = ds.map(
+            lambda x: {**x, messages_field: json.loads(x[messages_field])},
+            num_proc=NUM_PROCESSES,
+            desc="Converting messages field to list of dictionaries",
+        )
+    return ds

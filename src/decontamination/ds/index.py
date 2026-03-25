@@ -1,11 +1,11 @@
+import json
 import logging
 from functools import partial
 
 from datasets import Dataset
-from datasets.load import load_dataset
 from tqdm import tqdm
 
-from decontamination.util import NUM_PROCESSES
+from decontamination.util import NUM_PROCESSES, read_dataset as read_dataset_util
 from elasticsearch import Elasticsearch, helpers
 
 from .config import DatasetConfig
@@ -51,11 +51,13 @@ def read_dataset(
     query_filter: tuple[str, str] = ("role", "user"),
     query_field: str = "content",
 ) -> Dataset:
-    log.info("Loading dataset: %s, subset: %s, split: %s", name, subset, split)
-    ds = load_dataset(name, subset, split=split)
-    log.info("Loaded dataset: %s", ds)
-    log.info("\tColumns: %s", ds.column_names)
-    log.info("\tNumber of examples: %d", len(ds))
+    ds = read_dataset_util(
+        name,
+        subset,
+        split,
+        None,
+        messages_field,
+    )
 
     return ds.map(
         partial(
@@ -83,10 +85,14 @@ def map_dataset_batched(
     new_indices = []
     new_batch = []
     for idx, example in zip(indices, batch[messages_field]):
+        if isinstance(example, str):
+            example = json.loads(example)
+
         for message in example:
             if message[query_filter[0]] == query_filter[1]:
                 new_indices.append(idx)
                 new_batch.append(message[query_field])
+
     return {"original_id": new_indices, "text": new_batch}
 
 
@@ -97,8 +103,7 @@ def index_dataset(
     batch_size: int = 1_000,
 ) -> None:
     log.info("Indexing dataset text into Elasticsearch index: %s", index_name)
-    index_stats = es.indices.stats(index=index_name)
-    index_size = index_stats["indices"][index_name]["total"]["docs"]["count"]
+    index_size = es.count(index=index_name)["count"]
     log.info("Total number of documents in dataset (%s): %d", index_name, len(dataset))
     log.info("Current number of documents in index (before indexing): %d", index_size)
     log.info("Remaining documents to index: %d", len(dataset) - index_size)
