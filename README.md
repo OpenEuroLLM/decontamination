@@ -1,13 +1,29 @@
 # Decontamination
 
-An n-gram based decontamination tool for LLM training datasets.
+An n-gram-based decontamination tool for LLM post-training datasets.
+
+--------------------
+
+# TL;DR
+
+```bash
+uv pip install https://github.com/OpenEuroLLM/decontamination.git
+
+es build         # Build an Elasticsearch apptainer image
+es prepare       # Prepare the image mounts and single-node configuration
+es run           # Run the Elasticsearch container
+
+ds index         # Index datasets defined in `configs/datasets.yaml`
+ds search        # Find overlap with benchmarks defined in `configs/benchmarks.yaml`
+ds remove [--huggingface-id <huggingface-id>]  # Decontaminate and (optionally) push to HF
+```
 
 --------------------
 
 # Installation
 
 ```bash
-uv pip install https://github.com/ali-elganzory/decontamination.git
+uv pip install https://github.com/OpenEuroLLM/decontamination.git
 ```
 
 # CLI
